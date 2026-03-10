@@ -1,0 +1,25 @@
+[
+  {
+    "id": "2",
+    "name": "Action Comics",
+    "company": "DC",
+    "issueNumber": 1,
+    "year": 1938,
+    "condition": "Fine",
+    "description": "First appearance of Superman. Rare Golden Age collectible in Fine condition. A piece of comic book history.",
+    "imageUrl": "https://images.unsplash.com/photo-1561070791-2526d30994b5?w=500&h=700&fit=crop",
+    "createdAt": "2024-01-09T14:30:00Z"
+  },
+  {
+    "name": "All-Winners Squad: Band of Heroes",
+    "company": "Marvel",
+    "issueNumber": 4,
+    "year": 2011,
+    "condition": "Fine",
+    "description": "Test",
+    "imageUrl": "",
+    "cbdbUrl": "",
+    "id": "1773077314625",
+    "createdAt": "2026-03-09T17:28:34.625Z"
+  }
+]
