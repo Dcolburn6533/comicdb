@@ -372,6 +372,20 @@ export default function ComicAnalyzer({ onSave }: ComicAnalyzerProps) {
             )}
           </div>
 
+          {pendingItems.length > 1 && (
+            <button
+              onClick={() => {
+                analyzedItems.forEach((item, index) => {
+                  if (!item.saved && !item.saving) saveItem(index);
+                });
+              }}
+              disabled={pendingItems.some((it) => it.saving) || pendingItems.some((it) => !it.name.trim() || !it.company.trim() || !it.description.trim())}
+              className="w-full rounded border-2 border-black bg-slate-800 py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 active:shadow-none active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50 transition-all"
+            >
+              Save All ({pendingItems.length} Comics)
+            </button>
+          )}
+
           {pendingItems.length === 0 && savedCount > 0 && (
             <div className="rounded border-2 border-green-600 bg-green-50 p-3 text-center text-sm font-bold text-green-700 uppercase tracking-wide">
               All comics saved

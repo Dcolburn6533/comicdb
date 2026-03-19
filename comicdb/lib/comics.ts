@@ -54,11 +54,11 @@ export async function addComic(comic: Omit<Comic, 'id' | 'createdAt'>): Promise<
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newComic),
     });
-    
+
     if (!response.ok) {
       throw new Error('Failed to add comic');
     }
-    
+
     return newComic;
   } catch (error) {
     console.error('Error adding comic:', error);
@@ -87,7 +87,7 @@ export async function deleteComic(id: string): Promise<void> {
     const response = await fetch(`/api/comics?id=${id}`, {
       method: 'DELETE',
     });
-    
+
     if (!response.ok) {
       throw new Error('Failed to delete comic');
     }

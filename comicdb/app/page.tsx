@@ -77,8 +77,8 @@ export default function Home() {
     let result = searchComics(comics, searchQuery);
     if (selectedCompany) result = result.filter((c) => c.company === selectedCompany);
     if (selectedCondition) result = result.filter((c) => c.condition === selectedCondition);
-    if (yearFrom) result = result.filter((c) => c.year >= parseInt(yearFrom));
-    if (yearTo) result = result.filter((c) => c.year <= parseInt(yearTo));
+    if (yearFrom) result = result.filter((c) => Number(c.year) >= parseInt(yearFrom, 10));
+    if (yearTo) result = result.filter((c) => Number(c.year) <= parseInt(yearTo, 10));
     switch (sortBy) {
       case 'oldest':   return [...result].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       case 'name-az':  return [...result].sort((a, b) => a.name.localeCompare(b.name));
@@ -163,148 +163,11 @@ export default function Home() {
         <ComicTicker comics={comics} />
       </div>
 
-      {/* ── WHAT WE DO ───────────────────────────────────────────── */}
-      <section className="relative overflow-hidden border-b-4 border-black" style={{ backgroundColor: '#FCD34D' }}>
-        <div className="absolute inset-0 bg-halftone-light pointer-events-none opacity-50" />
-        <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16">
-          <h2
-            className="font-comic-display text-center mb-10"
-            style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)', textShadow: '3px 3px 0 rgba(0,0,0,0.15)' }}
-          >
-            — WHAT WE DO —
-          </h2>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {WHAT_WE_DO.map((item) => (
-              <div
-                key={item.title}
-                className="border-4 border-black bg-white p-5 flex flex-col"
-                style={{ boxShadow: '5px 5px 0 #000' }}
-              >
-                <div className="text-4xl mb-3">{item.icon}</div>
-                <h3 className="font-comic-display text-lg uppercase leading-tight mb-2 text-black">{item.title}</h3>
-                <p className="text-sm text-gray-600 leading-relaxed flex-1">{item.body}</p>
-                <button
-                  onClick={scrollToCollection}
-                  className="mt-4 border-2 border-black bg-red-600 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-white hover:bg-red-500 transition-colors"
-                  style={{ boxShadow: '2px 2px 0 #000' }}
-                >
-                  {item.cta}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── HOW IT WORKS ─────────────────────────────────────────── */}
-      <section className="relative overflow-hidden border-b-4 border-black" style={{ backgroundColor: '#1D4ED8' }}>
-        <div className="absolute inset-0 bg-halftone-dark pointer-events-none opacity-30" />
-        <div
-          className="absolute inset-0 pointer-events-none opacity-10"
-          style={{ background: 'repeating-linear-gradient(-45deg, transparent, transparent 5px, rgba(255,255,255,0.3) 5px, rgba(255,255,255,0.3) 6px)' }}
-        />
-        <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16">
-          <h2
-            className="font-comic-display text-center text-white mb-10"
-            style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)', textShadow: '3px 3px 0 rgba(0,0,0,0.4)' }}
-          >
-            — HOW IT WORKS —
-          </h2>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 max-w-3xl mx-auto">
-            {HOW_IT_WORKS.map((item) => (
-              <div
-                key={item.step}
-                className="border-4 border-black bg-white p-5 text-center"
-                style={{ boxShadow: '5px 5px 0 #000' }}
-              >
-                <div
-                  className="inline-flex items-center justify-center w-14 h-14 border-4 border-black font-comic-display text-2xl text-white mb-4"
-                  style={{ backgroundColor: item.color, boxShadow: '3px 3px 0 #000' }}
-                >
-                  {item.step}
-                </div>
-                <div className="text-3xl mb-2">{item.icon}</div>
-                <h3 className="font-comic-display text-xl uppercase mb-2 text-black">{item.title}</h3>
-                <p className="text-xs text-gray-600 leading-relaxed">{item.body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── SHOP BY PUBLISHER ────────────────────────────────────── */}
-      {companies.length > 0 && (
-        <section className="relative overflow-hidden border-b-4 border-black" style={{ backgroundColor: '#FCD34D' }}>
-          <div className="absolute inset-0 bg-halftone-light pointer-events-none opacity-50" />
-          <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-14">
-            <h2
-              className="font-comic-display text-center mb-10"
-              style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)', textShadow: '3px 3px 0 rgba(0,0,0,0.15)' }}
-            >
-              — SHOP BY PUBLISHER —
-            </h2>
-
-            <div className="flex flex-wrap justify-center gap-4">
-              {companies.map((company) => {
-                const pub = getPublisherColor(company);
-                return (
-                  <button
-                    key={company}
-                    onClick={() => {
-                      setSelectedCompany(company);
-                      scrollToCollection();
-                    }}
-                    className="border-4 border-black px-6 py-4 font-comic-display text-xl uppercase tracking-wide transition-all hover:-translate-y-1 hover:scale-105"
-                    style={{
-                      backgroundColor: pub.bg,
-                      color: pub.text,
-                      boxShadow: '4px 4px 0 #000',
-                    }}
-                  >
-                    {company}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ── CTA BANNER ───────────────────────────────────────────── */}
-      <section className="relative overflow-hidden border-b-4 border-black" style={{ backgroundColor: '#DC2626' }}>
-        <div className="absolute inset-0 bg-halftone-dark pointer-events-none opacity-40" />
-        <div
-          className="absolute inset-0 pointer-events-none opacity-10"
-          style={{ background: 'repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(0,0,0,0.4) 8px, rgba(0,0,0,0.4) 9px)' }}
-        />
-        <div className="relative z-10 mx-auto max-w-4xl px-4 sm:px-6 py-14 text-center">
-          <h2
-            className="font-comic-display text-white leading-none"
-            style={{ fontSize: 'clamp(2.5rem, 8vw, 5rem)', textShadow: '4px 4px 0 #000' }}
-          >
-            START YOUR<br />
-            <span className="text-yellow-400" style={{ textShadow: '4px 4px 0 #000' }}>ADVENTURE!</span>
-          </h2>
-          <p className="mt-4 font-comic-display text-xl text-white/80 uppercase tracking-widest" style={{ textShadow: '1px 1px 0 rgba(0,0,0,0.5)' }}>
-            Thousands of comics &mdash; one marketplace &mdash; your story
-          </p>
-          <button
-            onClick={scrollToCollection}
-            className="mt-8 border-4 border-black bg-yellow-400 px-12 py-4 font-comic-display text-2xl uppercase tracking-wide text-black transition-all hover:bg-yellow-300 hover:-translate-y-0.5"
-            style={{ boxShadow: '5px 5px 0 #000' }}
-          >
-            Shop the Marketplace Now!
-          </button>
-        </div>
-      </section>
-
       {/* ── COLLECTION ANCHOR ────────────────────────────────────── */}
       <div id="collection" />
 
       {/* ── STICKY FILTER BAR ────────────────────────────────────── */}
-      <div className="sticky top-0 z-30 border-b-4 border-black" style={{ backgroundColor: '#1D4ED8' }}>
+      <div className="border-b-4 border-black" style={{ backgroundColor: '#1D4ED8' }}>
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8 space-y-2.5">
 
           {/* Search */}
@@ -471,7 +334,7 @@ export default function Home() {
         {!isLoading && filteredComics.length === 0 && (
           <div className="flex flex-col items-center justify-center py-32">
             <div
-              className="border-4 border-black bg-white px-14 py-12 text-center bg-halftone-light"
+              className="border-4 border-black bg-white px-14 py-12 text-center bg-halftone-licght"
               style={{ boxShadow: '8px 8px 0 #000' }}
             >
               <p className="font-comic-display text-5xl uppercase tracking-wide text-gray-800">
@@ -508,6 +371,143 @@ export default function Home() {
       {selectedComic && (
         <ComicModal comic={selectedComic} onClose={() => setSelectedComic(null)} />
       )}
+
+      {/* ── WHAT WE DO ───────────────────────────────────────────── */}
+      <section className="relative overflow-hidden border-b-4 border-black" style={{ backgroundColor: '#FCD34D' }}>
+        <div className="absolute inset-0 bg-halftone-light pointer-events-none opacity-50" />
+        <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16">
+          <h2
+            className="font-comic-display text-center mb-10"
+            style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)', textShadow: '3px 3px 0 rgba(0,0,0,0.15)' }}
+          >
+            — WHAT WE DO —
+          </h2>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {WHAT_WE_DO.map((item) => (
+              <div
+                key={item.title}
+                className="border-4 border-black bg-white p-5 flex flex-col"
+                style={{ boxShadow: '5px 5px 0 #000' }}
+              >
+                <div className="text-4xl mb-3">{item.icon}</div>
+                <h3 className="font-comic-display text-lg uppercase leading-tight mb-2 text-black">{item.title}</h3>
+                <p className="text-sm text-gray-600 leading-relaxed flex-1">{item.body}</p>
+                <button
+                  onClick={scrollToCollection}
+                  className="mt-4 border-2 border-black bg-red-600 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-white hover:bg-red-500 transition-colors"
+                  style={{ boxShadow: '2px 2px 0 #000' }}
+                >
+                  {item.cta}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── HOW IT WORKS ─────────────────────────────────────────── */}
+      <section className="relative overflow-hidden border-b-4 border-black" style={{ backgroundColor: '#1D4ED8' }}>
+        <div className="absolute inset-0 bg-halftone-dark pointer-events-none opacity-30" />
+        <div
+          className="absolute inset-0 pointer-events-none opacity-10"
+          style={{ background: 'repeating-linear-gradient(-45deg, transparent, transparent 5px, rgba(255,255,255,0.3) 5px, rgba(255,255,255,0.3) 6px)' }}
+        />
+        <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16">
+          <h2
+            className="font-comic-display text-center text-white mb-10"
+            style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)', textShadow: '3px 3px 0 rgba(0,0,0,0.4)' }}
+          >
+            — HOW IT WORKS —
+          </h2>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 max-w-3xl mx-auto">
+            {HOW_IT_WORKS.map((item) => (
+              <div
+                key={item.step}
+                className="border-4 border-black bg-white p-5 text-center"
+                style={{ boxShadow: '5px 5px 0 #000' }}
+              >
+                <div
+                  className="inline-flex items-center justify-center w-14 h-14 border-4 border-black font-comic-display text-2xl text-white mb-4"
+                  style={{ backgroundColor: item.color, boxShadow: '3px 3px 0 #000' }}
+                >
+                  {item.step}
+                </div>
+                <div className="text-3xl mb-2">{item.icon}</div>
+                <h3 className="font-comic-display text-xl uppercase mb-2 text-black">{item.title}</h3>
+                <p className="text-xs text-gray-600 leading-relaxed">{item.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── SHOP BY PUBLISHER ────────────────────────────────────── */}
+      {companies.length > 0 && (
+        <section className="relative overflow-hidden border-b-4 border-black" style={{ backgroundColor: '#FCD34D' }}>
+          <div className="absolute inset-0 bg-halftone-light pointer-events-none opacity-50" />
+          <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-14">
+            <h2
+              className="font-comic-display text-center mb-10"
+              style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)', textShadow: '3px 3px 0 rgba(0,0,0,0.15)' }}
+            >
+              — SHOP BY PUBLISHER —
+            </h2>
+
+            <div className="flex flex-wrap justify-center gap-4">
+              {companies.map((company) => {
+                const pub = getPublisherColor(company);
+                return (
+                  <button
+                    key={company}
+                    onClick={() => {
+                      setSelectedCompany(company);
+                      scrollToCollection();
+                    }}
+                    className="border-4 border-black px-6 py-4 font-comic-display text-xl uppercase tracking-wide transition-all hover:-translate-y-1 hover:scale-105"
+                    style={{
+                      backgroundColor: pub.bg,
+                      color: pub.text,
+                      boxShadow: '4px 4px 0 #000',
+                    }}
+                  >
+                    {company}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── CTA BANNER ───────────────────────────────────────────── */}
+      <section className="relative overflow-hidden border-b-4 border-black" style={{ backgroundColor: '#DC2626' }}>
+        <div className="absolute inset-0 bg-halftone-dark pointer-events-none opacity-40" />
+        <div
+          className="absolute inset-0 pointer-events-none opacity-10"
+          style={{ background: 'repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(0,0,0,0.4) 8px, rgba(0,0,0,0.4) 9px)' }}
+        />
+        <div className="relative z-10 mx-auto max-w-4xl px-4 sm:px-6 py-14 text-center">
+          <h2
+            className="font-comic-display text-white leading-none"
+            style={{ fontSize: 'clamp(2.5rem, 8vw, 5rem)', textShadow: '4px 4px 0 #000' }}
+          >
+            START YOUR<br />
+            <span className="text-yellow-400" style={{ textShadow: '4px 4px 0 #000' }}>ADVENTURE!</span>
+          </h2>
+          <p className="mt-4 font-comic-display text-xl text-white/80 uppercase tracking-widest" style={{ textShadow: '1px 1px 0 rgba(0,0,0,0.5)' }}>
+            Thousands of comics &mdash; one marketplace &mdash; your story
+          </p>
+          <button
+            onClick={scrollToCollection}
+            className="mt-8 border-4 border-black bg-yellow-400 px-12 py-4 font-comic-display text-2xl uppercase tracking-wide text-black transition-all hover:bg-yellow-300 hover:-translate-y-0.5"
+            style={{ boxShadow: '5px 5px 0 #000' }}
+          >
+            Shop the Marketplace Now!
+          </button>
+        </div>
+      </section>
 
       {/* ── CONDITION GUIDE STRIP ────────────────────────────────── */}
       <section className="border-t-4 border-b-4 border-black" style={{ backgroundColor: '#FCD34D' }}>
