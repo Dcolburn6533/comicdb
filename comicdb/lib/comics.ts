@@ -9,6 +9,7 @@ export interface Comic {
   imageUrl: string;
   cbdbUrl?: string;
   createdAt: string;
+  hidden?: boolean;
 }
 
 const COMICS_FILE = 'comics.json';
@@ -28,9 +29,10 @@ export async function initializeComics() {
   }
 }
 
-export async function getComics(): Promise<Comic[]> {
+export async function getComics(includeHidden = false): Promise<Comic[]> {
   try {
-    const response = await fetch('/api/comics');
+    const url = includeHidden ? '/api/comics?includeHidden=true' : '/api/comics';
+    const response = await fetch(url);
     const data = await response.json();
     return data.comics || [];
   } catch (error) {
@@ -60,6 +62,22 @@ export async function addComic(comic: Omit<Comic, 'id' | 'createdAt'>): Promise<
     return newComic;
   } catch (error) {
     console.error('Error adding comic:', error);
+    throw error;
+  }
+}
+
+export async function setComicVisibility(id: string, hidden: boolean): Promise<void> {
+  try {
+    const response = await fetch('/api/comics', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, hidden }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to update comic visibility');
+    }
+  } catch (error) {
+    console.error('Error updating comic visibility:', error);
     throw error;
   }
 }

@@ -1,27 +1,58 @@
 'use client';
 
 import { Comic } from '@/lib/comics';
+import { getPublisherColor } from '@/lib/publisherColors';
 import Image from 'next/image';
-import { getCbdbUrl } from '@/lib/cbdb';
 
 interface ComicCardProps {
   comic: Comic;
   onDelete: (id: string) => void;
+  onToggleVisibility: (id: string, hidden: boolean) => void;
 }
 
-export default function ComicCard({ comic, onDelete }: ComicCardProps) {
-  const handleDelete = () => {
-    onDelete(comic.id);
-  };
+const CONDITION_STYLE: Record<string, { bg: string; text: string }> = {
+  'Poor':      { bg: '#6b7280', text: '#fff' },
+  'Fair':      { bg: '#9ca3af', text: '#000' },
+  'Good':      { bg: '#16a34a', text: '#fff' },
+  'Very Good': { bg: '#15803d', text: '#fff' },
+  'Fine':      { bg: '#0891b2', text: '#fff' },
+  'Very Fine': { bg: '#2563eb', text: '#fff' },
+  'Near Mint': { bg: '#7c3aed', text: '#fff' },
+  'Mint':      { bg: '#ca8a04', text: '#000' },
+};
+
+export default function ComicCard({ comic, onDelete, onToggleVisibility }: ComicCardProps) {
+  const pub = getPublisherColor(comic.company);
+  const cond = CONDITION_STYLE[comic.condition] ?? { bg: '#6b7280', text: '#fff' };
 
   return (
-    <div className="group relative overflow-hidden rounded-xl border-2 border-[#1f1b18] bg-[#fff9eb] shadow-[6px_6px_0px_#1f1b18] transition-all duration-300 hover:-translate-y-1 hover:shadow-[10px_10px_0px_#1f1b18]">
-      <div className="absolute right-3 top-3 z-20 rounded-full border-2 border-[#1f1b18] bg-[#ffcd00] px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-[#1f1b18]">
-        Issue #{comic.issueNumber}
+    <div className="group flex flex-col overflow-hidden border-[3px] border-black bg-white transition-all duration-200 comic-shadow comic-shadow-hover">
+
+      {/* Publisher banner */}
+      <div
+        className="flex items-center justify-between px-3 py-2"
+        style={{ backgroundColor: pub.bg }}
+      >
+        <span
+          className="font-comic-display text-lg leading-none uppercase tracking-wide truncate"
+          style={{ color: pub.text }}
+        >
+          {comic.company}
+        </span>
+        <span
+          className="shrink-0 ml-2 border-2 px-2 py-0.5 font-comic-display text-sm leading-none"
+          style={{
+            borderColor: pub.text + '70',
+            color: pub.text,
+            backgroundColor: 'rgba(0,0,0,0.25)',
+          }}
+        >
+          #{comic.issueNumber}
+        </span>
       </div>
 
-      {/* Image Container */}
-      <div className="relative aspect-[2/3] w-full overflow-hidden border-b-2 border-[#1f1b18] bg-[#f3e8cf]">
+      {/* Cover */}
+      <div className="relative aspect-2/3 w-full overflow-hidden border-b-[3px] border-black">
         {comic.imageUrl ? (
           <Image
             src={comic.imageUrl}
@@ -30,54 +61,58 @@ export default function ComicCard({ comic, onDelete }: ComicCardProps) {
             className="object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_30%_30%,#f7d46b_0%,#f59e0b_45%,#9a3412_100%)]">
-            <svg
-              className="h-24 w-24 text-white/80"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
+          <div
+            className="flex h-full w-full flex-col items-center justify-center bg-halftone-light"
+            style={{ backgroundColor: pub.bg + '18' }}
+          >
+            <svg className="h-16 w-16 opacity-20" fill={pub.bg} viewBox="0 0 20 20">
               <path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 2.5 4 4-4 2.5 4z" />
             </svg>
+            <p className="mt-3 font-comic-display text-xs uppercase tracking-widest opacity-30">
+              No Cover
+            </p>
           </div>
         )}
       </div>
 
-      {/* Content */}
-      <div className="p-4">
-        <h3 className="font-comic-display mb-1 text-2xl leading-tight text-[#1f1b18] line-clamp-2">
+      {/* Info */}
+      <div className="flex flex-1 flex-col p-4">
+        <h3 className="font-comic-display mb-2 text-xl leading-tight text-gray-900 line-clamp-2">
           {comic.name}
         </h3>
-        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[#7c2d12]">
-          {comic.company}
-        </p>
-        <div className="mb-3 flex items-center gap-2 text-xs text-[#4a4134]">
-          <span className="rounded border border-[#1f1b18] bg-white px-2 py-1 font-semibold">{comic.year}</span>
-          <span className="inline-block rounded border border-[#1f1b18] bg-[#ffdca8] px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-[#7c2d12]">
+
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          <span className="border-2 border-black bg-stone-100 px-2 py-0.5 text-[11px] font-bold text-gray-700">
+            {comic.year}
+          </span>
+          <span
+            className="border-2 border-black px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide"
+            style={{ backgroundColor: cond.bg, color: cond.text }}
+          >
             {comic.condition}
           </span>
         </div>
-        <p className="mb-4 text-sm text-[#4a4134] line-clamp-3">
+
+        <p className="mb-4 flex-1 text-sm leading-relaxed text-gray-600 line-clamp-3">
           {comic.description}
         </p>
 
-        <div className="flex flex-col gap-2">
-          <a
-            href={getCbdbUrl(comic)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full rounded border-2 border-[#1f1b18] bg-[#2563eb] py-2 px-3 text-center text-sm font-bold text-white transition-colors duration-200 hover:bg-[#1d4ed8]"
-          >
-            View on CBDB
-          </a>
-
-          {/* Delete Button */}
-          <button
-            onClick={handleDelete}
-            className="w-full rounded border-2 border-[#1f1b18] bg-[#ef4444] py-2 px-3 text-sm font-bold text-white transition-colors duration-200 hover:bg-[#dc2626]"
-          >
-            Remove Listing
-          </button>
-        </div>
+        <button
+          onClick={() => onDelete(comic.id)}
+          className="w-full border-[3px] border-black bg-red-600 py-2 font-bold uppercase tracking-wide text-white hover:bg-red-700 comic-shadow transition-colors"
+        >
+          Remove Listing
+        </button>
+        <button
+          onClick={() => onToggleVisibility(comic.id, !comic.hidden)}
+          className={`mt-2 w-full border-[3px] border-black py-2 font-bold uppercase tracking-wide transition-colors comic-shadow ${
+            comic.hidden
+              ? 'bg-green-600 text-white hover:bg-green-700'
+              : 'bg-amber-500 text-white hover:bg-amber-600'
+          }`}
+        >
+          {comic.hidden ? 'Restore Listing' : 'Hide Listing'}
+        </button>
       </div>
     </div>
   );

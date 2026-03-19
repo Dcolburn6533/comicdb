@@ -17,6 +17,10 @@ interface GoogleDrivePickerProps {
 const GIS_SCRIPT = 'https://accounts.google.com/gsi/client';
 const GAPI_SCRIPT = 'https://apis.google.com/js/api.js';
 
+// Module-level token cache — persists across re-renders and component remounts
+let cachedToken: string | null = null;
+let tokenExpiresAt = 0;
+
 function loadScript(src: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const existing = document.querySelector(`script[src="${src}"]`);
@@ -106,6 +110,13 @@ export default function GoogleDrivePicker({ onSelectImageUrl }: GoogleDrivePicke
         window.gapi.load('picker', () => resolve());
       });
 
+      // Use cached token if still valid (with 60s buffer)
+      if (cachedToken && Date.now() < tokenExpiresAt - 60_000) {
+        void openPicker(cachedToken);
+        setIsLoading(false);
+        return;
+      }
+
       const tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: config.clientId,
         scope: 'https://www.googleapis.com/auth/drive.readonly',
@@ -114,11 +125,14 @@ export default function GoogleDrivePicker({ onSelectImageUrl }: GoogleDrivePicke
             setError('Google authorization was cancelled or failed.');
             return;
           }
+          cachedToken = response.access_token;
+          tokenExpiresAt = Date.now() + (response.expires_in ?? 3600) * 1000;
           void openPicker(response.access_token);
         },
       });
 
-      tokenClient.requestAccessToken({ prompt: 'consent' });
+      // Empty prompt — Google will only show consent if not yet granted
+      tokenClient.requestAccessToken({ prompt: '' });
     } catch (pickerError) {
       setError(pickerError instanceof Error ? pickerError.message : 'Google Picker failed to initialize.');
     } finally {

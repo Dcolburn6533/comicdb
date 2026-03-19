@@ -235,22 +235,6 @@ export default function ComicForm({ onSubmit }: ComicFormProps) {
           <GoogleDrivePicker onSelectImageUrl={setImageInputValue} />
         </div>
 
-        {/* CBDB URL Override */}
-        <div>
-          <label htmlFor="cbdbUrl" className="block text-sm font-semibold text-gray-700 mb-1">
-            CBDB URL (Optional)
-          </label>
-          <input
-            type="url"
-            id="cbdbUrl"
-            name="cbdbUrl"
-            placeholder="https://cbdb.com/..."
-            className="w-full rounded-md border border-gray-300 px-4 py-2 text-gray-900 placeholder-gray-500 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-          />
-          <p className="mt-1 text-xs text-gray-600">
-            Leave blank to auto-generate a CBDB search link from title, issue, and year.
-          </p>
-        </div>
 
         {/* Submit Button */}
         <button

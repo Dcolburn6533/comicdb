@@ -1,0 +1,9 @@
+Options -MultiViews
+RewriteEngine On
+
+# Forward all requests to the Next.js Node.js server
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^(.*)$ http://localhost:3000/$1 [P,L]
+
+# Pass the real protocol to Next.js (important for HTTPS detection)
+RequestHeader set X-Forwarded-Proto "https"

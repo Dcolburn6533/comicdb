@@ -47,9 +47,19 @@ export async function ensureComicsTable(): Promise<void> {
       description TEXT NOT NULL,
       image_url TEXT NOT NULL,
       cbdb_url TEXT NULL,
-      created_at DATETIME NOT NULL
+      created_at DATETIME NOT NULL,
+      hidden TINYINT(1) NOT NULL DEFAULT 0
     )
   `);
+
+  // Add hidden column to existing tables that predate this field
+  const [cols] = await db.query<RowDataPacket[]>(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'comics' AND COLUMN_NAME = 'hidden'`
+  );
+  if ((cols as RowDataPacket[]).length === 0) {
+    await db.query(`ALTER TABLE comics ADD COLUMN hidden TINYINT(1) NOT NULL DEFAULT 0`);
+  }
 
   tableEnsured = true;
 }
@@ -65,4 +75,5 @@ export interface ComicRow extends RowDataPacket {
   image_url: string;
   cbdb_url: string | null;
   created_at: Date | string;
+  hidden: number;
 }

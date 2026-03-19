@@ -19,8 +19,8 @@ const bangers = Bangers({
 });
 
 export const metadata: Metadata = {
-  title: "ComicDB - Vintage Comic Book Database",
-  description: "A searchable database of vintage comic books for sale. Add, search, and browse comic book listings with ease.",
+  title: "Marketplace Comics - Vintage Comic Book Database",
+  description: "Browse, buy, and sell vintage comic books. Searchable database of classic comics with condition grades and detailed listings.",
 };
 
 export default function RootLayout({

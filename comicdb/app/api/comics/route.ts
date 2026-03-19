@@ -12,6 +12,7 @@ interface Comic {
   imageUrl: string;
   cbdbUrl?: string;
   createdAt: string;
+  hidden?: boolean;
 }
 
 function rowToComic(row: ComicRow): Comic {
@@ -29,13 +30,17 @@ function rowToComic(row: ComicRow): Comic {
       typeof row.created_at === 'string'
         ? new Date(row.created_at).toISOString()
         : row.created_at.toISOString(),
+    hidden: row.hidden === 1,
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await ensureComicsTable();
     const db = getDbPool();
+    const { searchParams } = new URL(request.url);
+    const includeHidden = searchParams.get('includeHidden') === 'true';
+
     const [rows] = await db.query<ComicRow[]>(
       `
         SELECT
@@ -48,8 +53,10 @@ export async function GET() {
           description,
           image_url,
           cbdb_url,
-          created_at
+          created_at,
+          hidden
         FROM comics
+        ${includeHidden ? '' : 'WHERE hidden = 0'}
         ORDER BY created_at DESC
       `
     );
@@ -104,6 +111,32 @@ export async function POST(request: NextRequest) {
       { error: 'Failed to add comic' },
       { status: 500 }
     );
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const { id, hidden } = await request.json();
+    if (!id || typeof hidden !== 'boolean') {
+      return NextResponse.json({ error: 'id and hidden are required' }, { status: 400 });
+    }
+
+    await ensureComicsTable();
+    const db = getDbPool();
+    const [result] = await db.execute(
+      'UPDATE comics SET hidden = ? WHERE id = ?',
+      [hidden ? 1 : 0, id]
+    );
+
+    const affectedRows = (result as { affectedRows: number }).affectedRows;
+    if (affectedRows === 0) {
+      return NextResponse.json({ error: 'Comic not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error updating comic visibility:', error);
+    return NextResponse.json({ error: 'Failed to update comic' }, { status: 500 });
   }
 }
 
