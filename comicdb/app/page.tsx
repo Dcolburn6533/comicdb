@@ -227,7 +227,7 @@ export default function Home() {
                       onClick={() => openOffer(comic)}
                       className="rounded border border-slate-400 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
                     >
-                      Offer
+                      Make Offer
                     </button>
                   </div>
                 </div>
