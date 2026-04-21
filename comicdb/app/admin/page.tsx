@@ -79,6 +79,7 @@ export default function AdminPanel() {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [offersLoading, setOffersLoading] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
+  const [messageSearch, setMessageSearch] = useState('');
 
   const [comicImages, setComicImages] = useState<Map<string, ComicImage[]>>(new Map());
   const [editingComicId, setEditingComicId] = useState<string | null>(null);
@@ -266,22 +267,6 @@ export default function AdminPanel() {
       setEditError('Failed to save changes. Please try again.');
     } finally {
       setSavingEdit(false);
-    }
-  };
-
-  const handleMarkOfferRead = async (id: number, isRead: boolean) => {
-    try {
-      await fetch('/api/offers', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, isRead }),
-      });
-      setOffers(offers.map((o) => (o.id === id ? { ...o, isRead } : o)));
-      if (selectedOffer?.id === id) {
-        setSelectedOffer({ ...selectedOffer, isRead });
-      }
-    } catch (err) {
-      console.error('Failed to update offer:', err);
     }
   };
 
@@ -702,7 +687,21 @@ export default function AdminPanel() {
         )}
 
         {activeTab === 'messages' && (
-          <div className="space-y-4">
+          <div className="space-y-3">
+            {/* Search bar */}
+            <div className="relative">
+              <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search messages..."
+                value={messageSearch}
+                onChange={(e) => setMessageSearch(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              />
+            </div>
+
             {offersLoading ? (
               <div className="flex justify-center py-12">
                 <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
@@ -712,67 +711,57 @@ export default function AdminPanel() {
                 <p className="text-sm text-gray-500">No messages yet.</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {offers.map((offer) => (
-                  <div
-                    key={offer.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedOffer(offer)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedOffer(offer);
-                      }
-                    }}
-                    className={`w-full rounded-xl border p-4 text-left transition-all hover:shadow-sm cursor-pointer ${
-                      offer.isRead
-                        ? 'border-slate-200 bg-white hover:border-slate-300'
-                        : 'border-amber-200 bg-amber-50 hover:border-amber-300'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-1 flex items-center gap-2">
-                          <span className="text-sm font-semibold text-gray-900">{offer.senderName}</span>
-                          <span className="text-xs text-gray-500">{offer.senderPhone}</span>
-                          {offer.senderEmail && <span className="text-xs text-gray-500">{offer.senderEmail}</span>}
-                          {!offer.isRead && (
-                            <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">New</span>
-                          )}
-                        </div>
-                        <div className="mb-2">
-                          <p className="text-xs text-gray-500">{new Date(offer.createdAt).toLocaleString()}</p>
-                          <p className="text-xs font-medium text-slate-700">
-                            {(offer.comics?.length > 0 ? offer.comics.length : 1)} comic reference{(offer.comics?.length ?? 1) > 1 ? 's' : ''}
-                          </p>
-                        </div>
-                        <p className="line-clamp-2 text-sm text-gray-700 whitespace-pre-line">{offer.message}</p>
-                        <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Click to view referenced comics</p>
+              <div className="space-y-1">
+                {offers
+                  .filter((offer) => {
+                    if (!messageSearch.trim()) return true;
+                    const q = messageSearch.toLowerCase();
+                    return (
+                      offer.senderName.toLowerCase().includes(q) ||
+                      offer.senderEmail.toLowerCase().includes(q) ||
+                      offer.message.toLowerCase().includes(q)
+                    );
+                  })
+                  .map((offer) => (
+                    <div
+                      key={offer.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedOffer(offer)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedOffer(offer);
+                        }
+                      }}
+                      className={`w-full rounded-lg border p-2.5 text-left transition-all hover:shadow-sm cursor-pointer ${
+                        offer.isRead
+                          ? 'border-slate-200 bg-white hover:border-slate-300'
+                          : 'border-red-200 bg-red-50 hover:border-red-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-gray-900">{offer.senderName}</span>
+                        {offer.senderEmail && <span className="text-xs text-gray-500">{offer.senderEmail}</span>}
+                        {!offer.isRead && (
+                          <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">New</span>
+                        )}
+                        <span className="ml-auto text-xs text-gray-400">{new Date(offer.createdAt).toLocaleString()}</span>
+                      </div>
+                      <p className="mt-1 line-clamp-1 text-xs text-gray-600 whitespace-pre-line">{offer.message}</p>
+                      <div className="mt-1.5 flex gap-1.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteOffer(offer.id);
+                          }}
+                          className="rounded bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700 hover:bg-red-200 transition-colors"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleMarkOfferRead(offer.id, !offer.isRead);
-                        }}
-                        className="rounded bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 transition-colors"
-                      >
-                        {offer.isRead ? 'Mark Unread' : 'Mark Read'}
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteOffer(offer.id);
-                        }}
-                        className="rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-200 transition-colors"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             )}
           </div>
@@ -867,12 +856,6 @@ export default function AdminPanel() {
               </div>
 
               <div className="flex gap-2 pt-1">
-                <button
-                  onClick={() => handleMarkOfferRead(selectedOffer.id, !selectedOffer.isRead)}
-                  className="rounded bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 transition-colors"
-                >
-                  {selectedOffer.isRead ? 'Mark Unread' : 'Mark Read'}
-                </button>
                 <button
                   onClick={() => handleDeleteOffer(selectedOffer.id)}
                   className="rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-200 transition-colors"
