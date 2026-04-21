@@ -270,6 +270,19 @@ export default function AdminPanel() {
     }
   };
 
+  const markOfferRead = async (id: number) => {
+    try {
+      await fetch('/api/offers', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, isRead: true }),
+      });
+      setOffers((prev) => prev.map((o) => (o.id === id ? { ...o, isRead: true } : o)));
+    } catch (err) {
+      console.error('Failed to mark offer read:', err);
+    }
+  };
+
   const handleDeleteOffer = async (id: number) => {
     try {
       await fetch(`/api/offers?id=${id}`, { method: 'DELETE' });
@@ -727,11 +740,12 @@ export default function AdminPanel() {
                       key={offer.id}
                       role="button"
                       tabIndex={0}
-                      onClick={() => setSelectedOffer(offer)}
+                      onClick={() => { setSelectedOffer(offer); if (!offer.isRead) markOfferRead(offer.id); }}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
                           setSelectedOffer(offer);
+                          if (!offer.isRead) markOfferRead(offer.id);
                         }
                       }}
                       className={`w-full rounded-lg border p-2.5 text-left transition-all hover:shadow-sm cursor-pointer ${
