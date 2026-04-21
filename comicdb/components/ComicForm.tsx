@@ -14,7 +14,31 @@ export default function ComicForm({ onSubmit }: ComicFormProps) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [imageInputValue, setImageInputValue] = useState('');
+  const [additionalImageUrls, setAdditionalImageUrls] = useState<string[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
+
+  const addAdditionalImage = (url: string) => {
+    setAdditionalImageUrls((prev) => {
+      if (prev.includes(url)) return prev;
+      return [...prev, url];
+    });
+  };
+
+  const addAdditionalImages = (urls: string[]) => {
+    setAdditionalImageUrls((prev) => {
+      const merged = [...prev];
+      for (const url of urls) {
+        if (!merged.includes(url)) {
+          merged.push(url);
+        }
+      }
+      return merged;
+    });
+  };
+
+  const removeAdditionalImage = (url: string) => {
+    setAdditionalImageUrls((prev) => prev.filter((entry) => entry !== url));
+  };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -26,6 +50,8 @@ export default function ComicForm({ onSubmit }: ComicFormProps) {
       const formData = new FormData(e.currentTarget);
       const rawImageUrl = (formData.get('imageUrl') as string) ?? '';
       const normalizedImageUrl = normalizeImageUrl(rawImageUrl);
+      const rawPrice = ((formData.get('price') as string) ?? '').trim();
+      const parsedPrice = rawPrice ? Number.parseFloat(rawPrice) : undefined;
 
       if (
         rawImageUrl.trim() &&
@@ -43,33 +69,19 @@ export default function ComicForm({ onSubmit }: ComicFormProps) {
         year: parseInt(formData.get('year') as string, 10),
         condition: formData.get('condition') as string,
         description: formData.get('description') as string,
+        price: parsedPrice,
         imageUrl: normalizedImageUrl,
         cbdbUrl: formData.get('cbdbUrl') as string,
+        additionalImages: additionalImageUrls,
       };
 
-      // Validation
+      // Only name and price are required
       if (!comic.name.trim()) {
         setError('Comic name is required');
         return;
       }
-      if (!comic.company.trim()) {
-        setError('Company is required');
-        return;
-      }
-      if (!comic.issueNumber || comic.issueNumber < 1) {
-        setError('Please enter a valid issue number');
-        return;
-      }
-      if (!comic.year || comic.year < 1900 || comic.year > new Date().getFullYear()) {
-        setError('Please enter a valid year');
-        return;
-      }
-      if (!comic.condition.trim()) {
-        setError('Condition is required');
-        return;
-      }
-      if (!comic.description.trim()) {
-        setError('Description is required');
+      if (typeof comic.price !== 'number' || !Number.isFinite(comic.price) || comic.price < 0) {
+        setError('Price is required and must be a valid positive number');
         return;
       }
 
@@ -77,6 +89,7 @@ export default function ComicForm({ onSubmit }: ComicFormProps) {
       setSuccess(true);
       formRef.current?.reset();
       setImageInputValue('');
+      setAdditionalImageUrls([]);
       
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(false), 3000);
@@ -123,7 +136,7 @@ export default function ComicForm({ onSubmit }: ComicFormProps) {
           {/* Issue Number */}
           <div>
             <label htmlFor="issueNumber" className="block text-sm font-semibold text-gray-700 mb-1">
-              Issue Number *
+              Issue Number
             </label>
             <input
               type="number"
@@ -132,14 +145,13 @@ export default function ComicForm({ onSubmit }: ComicFormProps) {
               placeholder="e.g., 15"
               min="1"
               className="w-full rounded-md border border-gray-300 px-4 py-2 text-gray-900 placeholder-gray-500 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-              required
             />
           </div>
 
           {/* Company */}
           <div>
             <label htmlFor="company" className="block text-sm font-semibold text-gray-700 mb-1">
-              Company *
+              Company
             </label>
             <input
               type="text"
@@ -147,14 +159,13 @@ export default function ComicForm({ onSubmit }: ComicFormProps) {
               name="company"
               placeholder="e.g., Marvel"
               className="w-full rounded-md border border-gray-300 px-4 py-2 text-gray-900 placeholder-gray-500 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-              required
             />
           </div>
 
           {/* Year */}
           <div>
             <label htmlFor="year" className="block text-sm font-semibold text-gray-700 mb-1">
-              Year Published *
+              Year Published
             </label>
             <input
               type="number"
@@ -164,7 +175,23 @@ export default function ComicForm({ onSubmit }: ComicFormProps) {
               min="1900"
               max={new Date().getFullYear()}
               className="w-full rounded-md border border-gray-300 px-4 py-2 text-gray-900 placeholder-gray-500 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+            />
+          </div>
+
+          {/* Price */}
+          <div>
+            <label htmlFor="price" className="block text-sm font-semibold text-gray-700 mb-1">
+              Price *
+            </label>
+            <input
+              type="number"
+              id="price"
+              name="price"
+              placeholder="e.g., 24.99"
+              min="0"
+              step="0.01"
               required
+              className="w-full rounded-md border border-gray-300 px-4 py-2 text-gray-900 placeholder-gray-500 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
             />
           </div>
         </div>
@@ -172,13 +199,12 @@ export default function ComicForm({ onSubmit }: ComicFormProps) {
         {/* Condition */}
         <div>
           <label htmlFor="condition" className="block text-sm font-semibold text-gray-700 mb-1">
-            Condition *
+            Condition
           </label>
           <select
             id="condition"
             name="condition"
             className="w-full rounded-md border border-gray-300 px-4 py-2 text-gray-900 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-            required
           >
             <option value="">Select condition...</option>
             <option value="Poor">Poor (Heavy wear, significant damage)</option>
@@ -195,7 +221,7 @@ export default function ComicForm({ onSubmit }: ComicFormProps) {
         {/* Description */}
         <div>
           <label htmlFor="description" className="block text-sm font-semibold text-gray-700 mb-1">
-            Description *
+            Description
           </label>
           <textarea
             id="description"
@@ -203,7 +229,6 @@ export default function ComicForm({ onSubmit }: ComicFormProps) {
             placeholder="Details about the comic condition, grade, artist, etc."
             rows={4}
             className="w-full rounded-md border border-gray-300 px-4 py-2 text-gray-900 placeholder-gray-500 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-            required
           ></textarea>
         </div>
 
@@ -221,18 +246,41 @@ export default function ComicForm({ onSubmit }: ComicFormProps) {
             onChange={(event) => setImageInputValue(event.target.value)}
             className="w-full rounded-md border border-gray-300 px-4 py-2 text-gray-900 placeholder-gray-500 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
           />
-          <p className="mt-2 text-xs text-gray-600">
-            <strong>Image sources:</strong>
-          </p>
-          <ul className="mt-1 text-xs text-gray-600 space-y-1 list-disc list-inside">
-            <li>Direct image URL (e.g., jpg, png)</li>
-            <li>Google Drive native input: paste share link and we auto-convert it</li>
-            <li>You can also paste only the Google Drive file ID</li>
-            <li>Unsplash or other stock photos</li>
-            <li>Leave blank to use a placeholder</li>
-          </ul>
 
           <GoogleDrivePicker onSelectImageUrl={setImageInputValue} />
+        </div>
+
+        {/* Additional Images */}
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">
+            Additional Images
+          </label>
+          <GoogleDrivePicker
+            allowMultiSelect
+            onSelectImageUrls={addAdditionalImages}
+            onSelectImageUrl={addAdditionalImage}
+          />
+
+          {additionalImageUrls.length > 0 && (
+            <div className="mt-2 space-y-1.5">
+              {additionalImageUrls.map((url) => (
+                <div key={url} className="flex items-center justify-between gap-2 rounded border border-gray-200 bg-white px-2.5 py-1.5">
+                  <span className="truncate text-xs text-gray-700">{url}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeAdditionalImage(url)}
+                    className="shrink-0 rounded bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700 hover:bg-red-200"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <p className="mt-1 text-xs text-gray-600">
+            Add extra cover/back/spine images from Google Drive.
+          </p>
         </div>
 
 
