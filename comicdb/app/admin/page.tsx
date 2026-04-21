@@ -68,6 +68,8 @@ const CONDITIONS = ['Poor', 'Fair', 'Good', 'Very Good', 'Fine', 'Very Fine', 'N
 export default function AdminPanel() {
   const [comics, setComics] = useState<Comic[]>([]);
   const [manageQuery, setManageQuery] = useState('');
+  const [manageFilter, setManageFilter] = useState<'all' | 'visible' | 'hidden'>('all');
+  const [managePage, setManagePage] = useState(1);
   const [activeTab, setActiveTab] = useState<Tab>('manage');
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -108,6 +110,10 @@ export default function AdminPanel() {
       loadOffers();
     }
   }, [isAuthenticated, activeTab]);
+
+  useEffect(() => {
+    setManagePage(1);
+  }, [manageQuery, manageFilter]);
 
   const loadComics = async () => {
     try {
@@ -200,39 +206,37 @@ export default function AdminPanel() {
   const saveEdit = async (comicId: string) => {
     if (!editDraft) return;
 
-    if (!editDraft.name.trim() || !editDraft.company.trim() || !editDraft.description.trim()) {
-      setEditError('Name, company, and description are required.');
+    // Only name and price are required
+    if (!editDraft.name.trim()) {
+      setEditError('Name is required.');
       return;
     }
 
-    const issueNumber = parseInt(editDraft.issueNumber, 10);
-    const year = parseInt(editDraft.year, 10);
     const priceInput = editDraft.price.trim();
     const parsedPrice = priceInput ? Number.parseFloat(priceInput) : null;
-    if (!Number.isFinite(issueNumber) || issueNumber < 1) {
-      setEditError('Issue number must be at least 1.');
+    if (!priceInput) {
+      setEditError('Price is required.');
       return;
     }
-    if (!Number.isFinite(year) || year < 1900 || year > new Date().getFullYear()) {
-      setEditError('Year is invalid.');
-      return;
-    }
-    if (priceInput && (!Number.isFinite(parsedPrice) || (parsedPrice ?? 0) < 0)) {
+    if (!Number.isFinite(parsedPrice) || (parsedPrice ?? 0) < 0) {
       setEditError('Price must be a valid positive number.');
       return;
     }
+
+    const issueNumber = editDraft.issueNumber.trim() ? parseInt(editDraft.issueNumber, 10) : 0;
+    const year = editDraft.year.trim() ? parseInt(editDraft.year, 10) : 0;
 
     try {
       setSavingEdit(true);
       setEditError('');
       await updateComic(comicId, {
         name: editDraft.name.trim(),
-        company: editDraft.company.trim(),
-        issueNumber,
-        year,
+        ...(editDraft.company.trim() && { company: editDraft.company.trim() }),
+        ...(issueNumber > 0 && { issueNumber }),
+        ...(year > 0 && { year }),
         price: parsedPrice ?? undefined,
-        condition: editDraft.condition,
-        description: editDraft.description.trim(),
+        ...(editDraft.condition && { condition: editDraft.condition }),
+        ...(editDraft.description.trim() && { description: editDraft.description.trim() }),
         imageUrl: editDraft.imageUrl.trim(),
         cbdbUrl: editDraft.cbdbUrl.trim(),
         hidden: editDraft.hidden,
@@ -243,12 +247,12 @@ export default function AdminPanel() {
           ? {
               ...comic,
               name: editDraft.name.trim(),
-              company: editDraft.company.trim(),
-              issueNumber,
-              year,
+              ...(editDraft.company.trim() && { company: editDraft.company.trim() }),
+              ...(issueNumber > 0 && { issueNumber }),
+              ...(year > 0 && { year }),
               price: parsedPrice ?? undefined,
-              condition: editDraft.condition,
-              description: editDraft.description.trim(),
+              ...(editDraft.condition && { condition: editDraft.condition }),
+              ...(editDraft.description.trim() && { description: editDraft.description.trim() }),
               imageUrl: editDraft.imageUrl.trim(),
               cbdbUrl: editDraft.cbdbUrl.trim() || undefined,
               hidden: editDraft.hidden,
@@ -337,7 +341,21 @@ export default function AdminPanel() {
     return <AdminLogin onLogin={handleLogin} />;
   }
 
-  const managedComics = searchComics(comics, manageQuery);
+  const baseManaged = searchComics(comics, manageQuery);
+  const managedComics = manageFilter === 'visible'
+    ? baseManaged.filter((c) => !c.hidden)
+    : manageFilter === 'hidden'
+      ? baseManaged.filter((c) => c.hidden)
+      : baseManaged;
+
+  const MANAGE_PAGE_SIZE = 25;
+  const manageTotalPages = Math.max(1, Math.ceil(managedComics.length / MANAGE_PAGE_SIZE));
+  const safeManagePage = Math.min(managePage, manageTotalPages);
+  const pagedManagedComics = managedComics.slice(
+    (safeManagePage - 1) * MANAGE_PAGE_SIZE,
+    safeManagePage * MANAGE_PAGE_SIZE
+  );
+
   const unreadCount = offers.filter((o) => !o.isRead).length;
 
   return (
@@ -401,6 +419,7 @@ export default function AdminPanel() {
 
         {activeTab === 'manage' && (
           <div className="space-y-4">
+            {/* Search */}
             <div className="relative">
               <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -414,33 +433,89 @@ export default function AdminPanel() {
               />
             </div>
 
-            <p className="text-xs text-gray-500">
-              {managedComics.length} of {comics.length} comics
-              {comics.filter((c) => c.hidden).length > 0 && (
-                <span className="ml-1 text-gray-400">({comics.filter((c) => c.hidden).length} hidden)</span>
-              )}
-            </p>
-
-            <div className="space-y-2">
-              {managedComics.length === 0 && (
-                <p className="py-8 text-center text-sm text-gray-400">No results</p>
-              )}
-              {managedComics.map((comic) => (
-                <div
-                  key={comic.id}
-                  className={`rounded-lg border ${
-                    comic.hidden ? 'border-gray-200 bg-gray-50 opacity-60' : 'border-gray-200 bg-white'
+            {/* Filter + count row */}
+            <div className="flex items-center gap-2">
+              {(['all', 'visible', 'hidden'] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setManageFilter(f)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors capitalize ${
+                    manageFilter === f
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-2 px-3 py-2">
+                  {f}
+                </button>
+              ))}
+              <span className="ml-auto text-xs text-gray-500">
+                {managedComics.length} of {comics.length} comics
+                {comics.filter((c) => c.hidden).length > 0 && (
+                  <span className="ml-1 text-gray-400">({comics.filter((c) => c.hidden).length} hidden)</span>
+                )}
+              </span>
+            </div>
+
+            {/* Pagination top */}
+            {manageTotalPages > 1 && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Page {safeManagePage} of {manageTotalPages}</span>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => setManagePage((p) => Math.max(1, p - 1))}
+                    disabled={safeManagePage === 1}
+                    className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
+                  >Previous</button>
+                  <button
+                    onClick={() => setManagePage((p) => Math.min(manageTotalPages, p + 1))}
+                    disabled={safeManagePage === manageTotalPages}
+                    className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
+                  >Next</button>
+                </div>
+              </div>
+            )}
+
+            {/* Comic rows */}
+            <div className="overflow-hidden rounded-xl border border-stone-200 shadow-sm divide-y divide-stone-100">
+              {pagedManagedComics.length === 0 && (
+                <p className="py-8 text-center text-sm text-gray-400">No results</p>
+              )}
+              {pagedManagedComics.map((comic, index) => (
+                <div
+                  key={comic.id}
+                  className={`${index % 2 === 0 ? 'bg-white' : 'bg-stone-50'} ${comic.hidden ? 'opacity-60' : ''}`}
+                >
+                  {/* Collapsed row */}
+                  <div className="flex items-center gap-3 px-3 py-3">
+                    {/* Thumbnail */}
+                    <div className="h-16 w-11 shrink-0 overflow-hidden rounded bg-gray-100 relative">
+                      {comic.imageUrl ? (
+                        <Image
+                          src={comic.imageUrl}
+                          alt={comic.name}
+                          fill
+                          className="object-cover"
+                          sizes="44px"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center">
+                          <svg className="h-5 w-5 text-gray-300" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 2.5 4 4-4 2.5 4z" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    {/* Info */}
                     <div className="min-w-0 flex-1">
-                      <p className={`text-sm font-medium truncate ${comic.hidden ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                      <p className={`text-sm font-semibold truncate ${comic.hidden ? 'text-gray-400 line-through' : 'text-slate-900'}`}>
                         {comic.name}
                       </p>
-                      <p className="text-xs text-gray-500">
-                        {comic.company} #{comic.issueNumber} &middot; {comic.year} &middot; {comic.condition}
+                      <p className="text-xs text-slate-500">
+                        {comic.company} &middot; #{comic.issueNumber} &middot; {comic.year} &middot; {comic.condition}
+                        {typeof comic.price === 'number' ? ` · $${comic.price.toFixed(2)}` : ''}
                       </p>
                     </div>
+                    {/* Admin actions */}
                     <div className="flex shrink-0 gap-1">
                       <button
                         onClick={() => openEdit(comic)}
@@ -467,6 +542,7 @@ export default function AdminPanel() {
                     </div>
                   </div>
 
+                  {/* Inline edit panel */}
                   {editingComicId === comic.id && editDraft && (
                     <div className="border-t border-gray-100 px-3 py-3 space-y-3">
                       {editError && (
@@ -474,10 +550,9 @@ export default function AdminPanel() {
                           {editError}
                         </p>
                       )}
-
                       <div className="grid gap-2 md:grid-cols-2">
                         <div>
-                          <label className="mb-1 block text-[11px] font-medium text-gray-600">Name</label>
+                          <label className="mb-1 block text-[11px] font-medium text-gray-600">Name *</label>
                           <input
                             type="text"
                             value={editDraft.name}
@@ -516,14 +591,14 @@ export default function AdminPanel() {
                           />
                         </div>
                         <div>
-                          <label className="mb-1 block text-[11px] font-medium text-gray-600">Price (Optional)</label>
+                          <label className="mb-1 block text-[11px] font-medium text-gray-600">Price *</label>
                           <input
                             type="number"
                             min="0"
                             step="0.01"
                             value={editDraft.price}
                             onChange={(e) => setEditDraft({ ...editDraft, price: e.target.value })}
-                            placeholder="Leave blank if no listed price"
+                            placeholder="Required"
                             className="w-full rounded border border-gray-300 px-2.5 py-1.5 text-sm text-gray-900"
                           />
                         </div>
@@ -576,7 +651,6 @@ export default function AdminPanel() {
                           <label htmlFor={`hidden-${comic.id}`} className="text-xs text-gray-700">Hide this comic from storefront</label>
                         </div>
                       </div>
-
                       <div className="space-y-2">
                         <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Additional Images</p>
                         <ImageDropZone
@@ -585,7 +659,6 @@ export default function AdminPanel() {
                           onImagesChanged={() => loadComicImages(comic.id)}
                         />
                       </div>
-
                       <div className="flex gap-2">
                         <button
                           onClick={() => saveEdit(comic.id)}
@@ -606,6 +679,25 @@ export default function AdminPanel() {
                 </div>
               ))}
             </div>
+
+            {/* Pagination bottom */}
+            {manageTotalPages > 1 && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Page {safeManagePage} of {manageTotalPages}</span>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => setManagePage((p) => Math.max(1, p - 1))}
+                    disabled={safeManagePage === 1}
+                    className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
+                  >Previous</button>
+                  <button
+                    onClick={() => setManagePage((p) => Math.min(manageTotalPages, p + 1))}
+                    disabled={safeManagePage === manageTotalPages}
+                    className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
+                  >Next</button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
