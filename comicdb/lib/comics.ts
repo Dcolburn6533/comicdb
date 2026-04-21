@@ -6,10 +6,12 @@ export interface Comic {
   year: number;
   condition: string;
   description: string;
+  price?: number;
   imageUrl: string;
   cbdbUrl?: string;
   createdAt: string;
   hidden?: boolean;
+  additionalImages?: string[];
 }
 
 const COMICS_FILE = 'comics.json';
@@ -44,7 +46,7 @@ export async function getComics(includeHidden = false): Promise<Comic[]> {
 export async function addComic(comic: Omit<Comic, 'id' | 'createdAt'>): Promise<Comic> {
   const newComic: Comic = {
     ...comic,
-    id: Date.now().toString(),
+    id: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
   };
 
@@ -82,6 +84,22 @@ export async function setComicVisibility(id: string, hidden: boolean): Promise<v
   }
 }
 
+export async function updateComic(id: string, updates: Partial<Omit<Comic, 'id' | 'createdAt' | 'additionalImages'>>): Promise<void> {
+  try {
+    const response = await fetch('/api/comics', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, ...updates }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to update comic');
+    }
+  } catch (error) {
+    console.error('Error updating comic:', error);
+    throw error;
+  }
+}
+
 export async function deleteComic(id: string): Promise<void> {
   try {
     const response = await fetch(`/api/comics?id=${id}`, {
@@ -100,14 +118,23 @@ export async function deleteComic(id: string): Promise<void> {
 export function searchComics(comics: Comic[], query: string): Comic[] {
   if (!query.trim()) return comics;
 
-  const lowerQuery = query.toLowerCase();
-  return comics.filter(
-    (comic) =>
-      comic.name.toLowerCase().includes(lowerQuery) ||
-      comic.company.toLowerCase().includes(lowerQuery) ||
-      comic.description.toLowerCase().includes(lowerQuery) ||
-      comic.year.toString().includes(lowerQuery) ||
-      comic.issueNumber.toString().includes(lowerQuery) ||
-      comic.condition.toLowerCase().includes(lowerQuery)
+  // Split on whitespace and common punctuation; each token is OR'd
+  const tokens = query
+    .toLowerCase()
+    .split(/[\s\-,;:.!?#&()/\\|]+/)
+    .filter(Boolean);
+
+  if (tokens.length === 0) return comics;
+
+  return comics.filter((comic) =>
+    tokens.some(
+      (token) =>
+        comic.name.toLowerCase().includes(token) ||
+        comic.company.toLowerCase().includes(token) ||
+        comic.description.toLowerCase().includes(token) ||
+        comic.year.toString().includes(token) ||
+        comic.issueNumber.toString().includes(token) ||
+        comic.condition.toLowerCase().includes(token)
+    )
   );
 }
