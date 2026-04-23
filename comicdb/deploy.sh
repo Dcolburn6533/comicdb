@@ -1,9 +1,11 @@
 #!/bin/bash
-# Deploy script for pair.com
+# Build and populate deploy-upload/ for Pair Networks (vps3712)
 # Usage: bash deploy.sh
-# Prerequisites: Node.js and PM2 installed on the server (npm install -g pm2)
+# Then upload the contents of deploy-upload/ to ~/public_html/marketplacecomics.com/ via SFTP/SCP
 
 set -e
+
+DEPLOY_DIR="$(dirname "$0")/deploy-upload"
 
 echo "==> Installing dependencies..."
 npm ci
@@ -11,20 +13,41 @@ npm ci
 echo "==> Building Next.js app..."
 npm run build
 
-echo "==> Copying static assets into standalone output..."
-cp -r .next/static .next/standalone/.next/static
-cp -r public .next/standalone/public
+echo "==> Clearing previous deploy-upload contents..."
+rm -rf "$DEPLOY_DIR/.next"
+rm -rf "$DEPLOY_DIR/node_modules"
+rm -f  "$DEPLOY_DIR/server.js"
+rm -f  "$DEPLOY_DIR/.env.local"
+rm -f  "$DEPLOY_DIR/package.json"
 
-echo "==> Copying .env.local into standalone output..."
+echo "==> Copying standalone server..."
+cp .next/standalone/server.js "$DEPLOY_DIR/server.js"
+
+echo "==> Copying built app files..."
+cp -r .next/standalone/.next "$DEPLOY_DIR/.next"
+
+echo "==> Copying static assets into build..."
+cp -r .next/static "$DEPLOY_DIR/.next/static"
+
+echo "==> Copying public folder..."
+cp -r public "$DEPLOY_DIR/public"
+
+echo "==> Copying standalone node_modules..."
+cp -r .next/standalone/node_modules "$DEPLOY_DIR/node_modules"
+
+echo "==> Copying .env.local..."
 if [ -f .env.local ]; then
-  cp .env.local .next/standalone/.env.local
+  cp .env.local "$DEPLOY_DIR/.env.local"
+else
+  echo "    WARNING: .env.local not found — remember to add it to the server manually."
 fi
 
-echo "==> Starting / restarting with PM2..."
-pm2 restart ecosystem.config.js --update-env || pm2 start ecosystem.config.js
-
-echo "==> Saving PM2 process list so it survives reboots..."
-pm2 save
+echo "==> Copying package.json..."
+cp package.json "$DEPLOY_DIR/package.json"
 
 echo ""
-echo "Done! App is running. Check status with: pm2 status"
+echo "Done! deploy-upload/ is ready."
+echo ""
+echo "Upload deploy-upload/ contents to the server, then restart:"
+echo "  pkill -f 'node server.js' || true"
+echo "  nohup node server.js > ~/app.log 2>&1 &"
