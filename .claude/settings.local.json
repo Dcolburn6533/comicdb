@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npx tsc:*)",
       "Bash(cp -r \"c:/Users/Dcolb/Documents/GitHub/comicdb/comicdb/.next/static\" \"c:/Users/Dcolb/Documents/GitHub/comicdb/comicdb/.next/standalone/.next/static\")",
-      "Bash(cp -r \"c:/Users/Dcolb/Documents/GitHub/comicdb/comicdb/public\" \"c:/Users/Dcolb/Documents/GitHub/comicdb/comicdb/.next/standalone/public\")"
+      "Bash(cp -r \"c:/Users/Dcolb/Documents/GitHub/comicdb/comicdb/public\" \"c:/Users/Dcolb/Documents/GitHub/comicdb/comicdb/.next/standalone/public\")",
+      "Bash(bash deploy.sh)"
     ]
   }
 }

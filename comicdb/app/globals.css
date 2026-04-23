@@ -10,7 +10,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --animate-marquee: marquee 40s linear infinite;
 }
 
 body {
@@ -19,78 +18,12 @@ body {
   font-family: var(--font-geist-sans), sans-serif;
 }
 
-.font-comic-display {
-  font-family: var(--font-comic-display), fantasy;
-  letter-spacing: 0.04em;
-}
-
-/* Scrolling ticker animation */
-@keyframes marquee {
-  0%   { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
-}
-
-.animate-marquee:hover {
-  animation-play-state: paused;
-}
-
-/* Halftone dot pattern — dark version */
-.bg-halftone-dark {
-  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.07) 1.5px, transparent 1.5px);
-  background-size: 18px 18px;
-}
-
-/* Halftone dot pattern — light version */
-.bg-halftone-light {
-  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.06) 1.5px, transparent 1.5px);
-  background-size: 18px 18px;
-}
-
-/* Comic panel hard shadow */
-.comic-shadow {
-  box-shadow: 5px 5px 0px 0px rgba(0, 0, 0, 1);
-}
-
-.comic-shadow-lg {
-  box-shadow: 8px 8px 0px 0px rgba(0, 0, 0, 1);
-}
-
-.comic-shadow-hover:hover {
-  box-shadow: 10px 10px 0px 0px rgba(0, 0, 0, 1);
-  transform: translate(-2px, -2px);
-}
-
-/* 8-point starburst */
-.starburst {
-  clip-path: polygon(
-    50% 0%, 56% 28%, 79% 9%, 66% 34%,
-    100% 35%, 75% 53%, 95% 78%, 67% 67%,
-    68% 100%, 50% 78%, 32% 100%, 33% 67%,
-    5% 78%, 25% 53%, 0% 35%, 34% 34%,
-    21% 9%, 44% 28%
-  );
-}
-
-/* Diagonal speed-line fill */
-.bg-speed-lines {
-  background-image: repeating-linear-gradient(
-    -45deg,
-    transparent,
-    transparent 4px,
-    rgba(0,0,0,0.04) 4px,
-    rgba(0,0,0,0.04) 5px
-  );
-}
-
-/* Price tag zigzag border */
-.price-tag::after {
-  content: '';
-  display: block;
-  height: 8px;
-  background: linear-gradient(135deg, #fff 25%, transparent 25%) -8px 0,
-              linear-gradient(225deg, #fff 25%, transparent 25%) -8px 0,
-              linear-gradient(315deg, #fff 25%, transparent 25%),
-              linear-gradient(45deg,  #fff 25%, transparent 25%);
-  background-size: 16px 8px;
-  background-color: transparent;
+button,
+a,
+select,
+[role="button"],
+input[type="submit"],
+input[type="button"],
+input[type="reset"] {
+  cursor: pointer;
 }

@@ -11,7 +11,9 @@ declare global {
 }
 
 interface GoogleDrivePickerProps {
-  onSelectImageUrl: (imageUrl: string) => void;
+  onSelectImageUrl?: (imageUrl: string) => void;
+  onSelectImageUrls?: (imageUrls: string[]) => void;
+  allowMultiSelect?: boolean;
 }
 
 const GIS_SCRIPT = 'https://accounts.google.com/gsi/client';
@@ -39,7 +41,11 @@ function loadScript(src: string): Promise<void> {
   });
 }
 
-export default function GoogleDrivePicker({ onSelectImageUrl }: GoogleDrivePickerProps) {
+export default function GoogleDrivePicker({
+  onSelectImageUrl,
+  onSelectImageUrls,
+  allowMultiSelect = false,
+}: GoogleDrivePickerProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -68,27 +74,40 @@ export default function GoogleDrivePicker({ onSelectImageUrl }: GoogleDrivePicke
         .setOAuthToken(token)
         .setDeveloperKey(config.apiKey)
         .setAppId(config.appId)
-        .setTitle('Select comic image from Google Drive')
+        .setTitle(allowMultiSelect ? 'Select comic images from Google Drive' : 'Select comic image from Google Drive')
+        .enableFeature(window.google.picker.Feature.MULTISELECT_ENABLED)
         .setCallback((data: any) => {
           if (data.action !== window.google.picker.Action.PICKED) {
             return;
           }
 
-          const doc = data.docs?.[0];
-          if (!doc?.id) {
+          const docs = (data.docs ?? []).filter((doc: any) => Boolean(doc?.id));
+          if (docs.length === 0) {
             setError('Could not read selected file ID from Google Drive.');
             return;
           }
 
-          const imageUrl = buildGoogleDriveImageUrl(doc.id);
-          onSelectImageUrl(imageUrl);
+          const imageUrls = docs.map((doc: any) => buildGoogleDriveImageUrl(doc.id));
+
+          if (allowMultiSelect) {
+            if (onSelectImageUrls) {
+              onSelectImageUrls(imageUrls);
+            } else if (onSelectImageUrl) {
+              imageUrls.forEach((url: string) => onSelectImageUrl(url));
+            }
+          } else if (onSelectImageUrl) {
+            onSelectImageUrl(imageUrls[0]);
+          } else if (onSelectImageUrls) {
+            onSelectImageUrls([imageUrls[0]]);
+          }
+
           setError('');
         })
         .build();
 
       picker.setVisible(true);
     },
-    [config.apiKey, config.appId, onSelectImageUrl]
+    [allowMultiSelect, config.apiKey, config.appId, onSelectImageUrl, onSelectImageUrls]
   );
 
   const handleConnectAndPick = useCallback(async () => {

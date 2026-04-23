@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS comics (
   year_published INT NOT NULL,
   comic_condition VARCHAR(100) NOT NULL,
   description TEXT NOT NULL,
+  price DECIMAL(10, 2) NULL,
   image_url TEXT NOT NULL,
   cbdb_url TEXT NULL,
   created_at DATETIME NOT NULL,

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Comic } from '@/lib/comics';
 import { buildGoogleDriveImageUrl } from '@/lib/googleDrive';
+import GoogleDrivePicker from '@/components/GoogleDrivePicker';
 
 declare global {
   interface Window {
@@ -13,14 +14,18 @@ declare global {
 
 interface AnalyzedItem {
   imagePreviewUrl: string;
+  imageBase64: string;
+  imageMimeType: string;
   name: string;
   company: string;
   issueNumber: string;
   year: string;
+  price: string;
   condition: string;
   description: string;
   cbdbUrl: string;
   imageUrl: string;
+  additionalImageUrls: string[];
   saved: boolean;
   saving: boolean;
   saveError: string;
@@ -33,11 +38,16 @@ interface SelectedImage {
   mimeType: string;
 }
 
+type AnalysisStatus = 'pending' | 'analyzing' | 'done' | 'error';
+
 interface ComicAnalyzerProps {
   onSave: (comic: Omit<Comic, 'id' | 'createdAt'>) => Promise<void>;
 }
 
 const CONDITIONS = ['Poor', 'Fair', 'Good', 'Very Good', 'Fine', 'Very Fine', 'Near Mint', 'Mint'];
+const STORAGE_KEY = 'comicdb-analyzed-items';
+const ANALYSIS_CONCURRENCY = 30;
+const SAVE_CONCURRENCY = 5;
 
 const GIS_SCRIPT = 'https://accounts.google.com/gsi/client';
 const GAPI_SCRIPT = 'https://apis.google.com/js/api.js';
@@ -74,14 +84,96 @@ async function fileToBase64(file: File): Promise<string> {
   });
 }
 
+function base64ToBlob(base64: string, mimeType: string): Blob {
+  const bytes = atob(base64);
+  const arr = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+  return new Blob([arr], { type: mimeType });
+}
+
+/** Run async tasks with a concurrency limit */
+async function runWithConcurrency<T>(
+  tasks: (() => Promise<T>)[],
+  limit: number
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (nextIndex < tasks.length) {
+      const i = nextIndex++;
+      results[i] = await tasks[i]();
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, tasks.length) }, () => worker())
+  );
+  return results;
+}
+
 export default function ComicAnalyzer({ onSave }: ComicAnalyzerProps) {
   const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
   const [isLoadingDrive, setIsLoadingDrive] = useState(false);
   const [driveError, setDriveError] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analyzingIndex, setAnalyzingIndex] = useState(0);
+  const [analysisStatuses, setAnalysisStatuses] = useState<AnalysisStatus[]>([]);
+  const [analysisTotalCount, setAnalysisTotalCount] = useState(0);
   const [analyzedItems, setAnalyzedItems] = useState<AnalyzedItem[]>([]);
+  const [isSavingAll, setIsSavingAll] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Restore from localStorage on mount
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      try {
+        const items: AnalyzedItem[] = JSON.parse(stored);
+        const pending = items.filter((item) => !item.saved);
+        if (pending.length > 0) {
+          // Regenerate blob URLs from stored base64
+          const restored = pending.map((item) => {
+            if (item.imageBase64 && item.imageMimeType) {
+              const blob = base64ToBlob(item.imageBase64, item.imageMimeType);
+              return {
+                ...item,
+                imagePreviewUrl: URL.createObjectURL(blob),
+                additionalImageUrls: Array.isArray(item.additionalImageUrls)
+                  ? item.additionalImageUrls
+                  : [],
+                saving: false,
+                saveError: '',
+              };
+            }
+            return {
+              ...item,
+              imagePreviewUrl: '',
+              additionalImageUrls: Array.isArray(item.additionalImageUrls)
+                ? item.additionalImageUrls
+                : [],
+              saving: false,
+              saveError: '',
+            };
+          });
+          setAnalyzedItems(restored);
+        }
+      } catch {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    }
+  }, []);
+
+  // Persist to localStorage whenever analyzedItems changes
+  useEffect(() => {
+    const pending = analyzedItems.filter((item) => !item.saved);
+    if (pending.length > 0) {
+      // Store without blob URLs (they don't survive serialization)
+      const toStore = pending.map((item) => ({ ...item, imagePreviewUrl: '', saving: false, saveError: '' }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore));
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }, [analyzedItems]);
 
   const driveConfig = {
     apiKey: process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
@@ -183,13 +275,20 @@ export default function ComicAnalyzer({ onSave }: ComicAnalyzerProps) {
   };
 
   const analyzeAll = async () => {
-    setIsAnalyzing(true);
-    setAnalyzingIndex(0);
-    const results: AnalyzedItem[] = [];
+    const images = [...selectedImages];
+    const total = images.length;
 
-    for (let i = 0; i < selectedImages.length; i++) {
-      setAnalyzingIndex(i + 1);
-      const img = selectedImages[i];
+    setIsAnalyzing(true);
+    setAnalysisTotalCount(total);
+    setAnalysisStatuses(new Array(total).fill('pending'));
+
+    const tasks = images.map((img, i) => async (): Promise<AnalyzedItem> => {
+      // Mark as analyzing
+      setAnalysisStatuses((prev) => {
+        const next = [...prev];
+        next[i] = 'analyzing';
+        return next;
+      });
 
       try {
         const res = await fetch('/api/analyze-comic', {
@@ -201,39 +300,67 @@ export default function ComicAnalyzer({ onSave }: ComicAnalyzerProps) {
         if (!res.ok || !data.success) throw new Error(data.error || 'Analysis failed');
 
         const ext = data.data;
-        results.push({
+        const item: AnalyzedItem = {
           imagePreviewUrl: img.previewUrl,
+          imageBase64: img.base64,
+          imageMimeType: img.mimeType,
           name: ext.name || '',
           company: ext.company || '',
           issueNumber: String(ext.issue_number || 1),
           year: String(ext.year_published || new Date().getFullYear()),
+          price: '',
           condition: CONDITIONS.includes(ext.condition) ? ext.condition : 'Good',
           description: ext.description || '',
           cbdbUrl: '',
           imageUrl: img.storeUrl,
+          additionalImageUrls: [],
           saved: false,
           saving: false,
           saveError: '',
+        };
+
+        setAnalysisStatuses((prev) => {
+          const next = [...prev];
+          next[i] = 'done';
+          return next;
         });
+
+        // Append result immediately
+        setAnalyzedItems((prev) => [item, ...prev]);
+        return item;
       } catch {
-        results.push({
+        const item: AnalyzedItem = {
           imagePreviewUrl: img.previewUrl,
+          imageBase64: img.base64,
+          imageMimeType: img.mimeType,
           name: '',
           company: '',
           issueNumber: '1',
           year: String(new Date().getFullYear()),
+          price: '',
           condition: 'Good',
           description: '',
           cbdbUrl: '',
           imageUrl: img.storeUrl,
+          additionalImageUrls: [],
           saved: false,
           saving: false,
           saveError: 'Analysis failed — please fill in details manually.',
-        });
-      }
-    }
+        };
 
-    setAnalyzedItems((prev) => [...results, ...prev]);
+        setAnalysisStatuses((prev) => {
+          const next = [...prev];
+          next[i] = 'error';
+          return next;
+        });
+
+        setAnalyzedItems((prev) => [item, ...prev]);
+        return item;
+      }
+    });
+
+    await runWithConcurrency(tasks, ANALYSIS_CONCURRENCY);
+
     setSelectedImages([]);
     setIsAnalyzing(false);
   };
@@ -246,6 +373,22 @@ export default function ComicAnalyzer({ onSave }: ComicAnalyzerProps) {
 
   const saveItem = async (index: number) => {
     const item = analyzedItems[index];
+    if (!item || item.saved || item.saving) return;
+
+    let parsedPrice: number | null = null;
+    if (item.price.trim()) {
+      const numericPrice = Number.parseFloat(item.price);
+      if (!Number.isFinite(numericPrice) || numericPrice < 0) {
+        setAnalyzedItems((prev) =>
+          prev.map((it, i) =>
+            i === index ? { ...it, saveError: 'Price must be a valid positive number.' } : it
+          )
+        );
+        return;
+      }
+      parsedPrice = numericPrice;
+    }
+
     setAnalyzedItems((prev) =>
       prev.map((it, i) => (i === index ? { ...it, saving: true, saveError: '' } : it))
     );
@@ -256,10 +399,12 @@ export default function ComicAnalyzer({ onSave }: ComicAnalyzerProps) {
         company: item.company.trim(),
         issueNumber: parseInt(item.issueNumber, 10) || 1,
         year: parseInt(item.year, 10) || new Date().getFullYear(),
+        price: parsedPrice ?? undefined,
         condition: item.condition,
         description: item.description.trim(),
         imageUrl: item.imageUrl,
         cbdbUrl: item.cbdbUrl,
+        additionalImages: item.additionalImageUrls,
       });
       setAnalyzedItems((prev) =>
         prev.map((it, i) => (i === index ? { ...it, saving: false, saved: true } : it))
@@ -275,15 +420,91 @@ export default function ComicAnalyzer({ onSave }: ComicAnalyzerProps) {
     }
   };
 
+  const saveAllThrottled = async () => {
+    setIsSavingAll(true);
+
+    const pendingIndices = analyzedItems
+      .map((item, index) => (!item.saved && !item.saving && item.name.trim() && item.company.trim() && item.description.trim() ? index : -1))
+      .filter((i) => i !== -1);
+
+    const tasks = pendingIndices.map((idx) => () => saveItem(idx));
+    await runWithConcurrency(tasks, SAVE_CONCURRENCY);
+
+    setIsSavingAll(false);
+  };
+
   const discardItem = (index: number) => {
     setAnalyzedItems((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const addAdditionalImageToItem = (index: number, url: string) => {
+    setAnalyzedItems((prev) =>
+      prev.map((item, i) => {
+        if (i !== index) return item;
+        if (item.additionalImageUrls.includes(url)) return item;
+        return { ...item, additionalImageUrls: [...item.additionalImageUrls, url] };
+      })
+    );
+  };
+
+  const addAdditionalImagesToItem = (index: number, urls: string[]) => {
+    setAnalyzedItems((prev) =>
+      prev.map((item, i) => {
+        if (i !== index) return item;
+        const merged = [...item.additionalImageUrls];
+        for (const url of urls) {
+          if (!merged.includes(url)) {
+            merged.push(url);
+          }
+        }
+        return { ...item, additionalImageUrls: merged };
+      })
+    );
+  };
+
+  const removeAdditionalImageFromItem = (index: number, url: string) => {
+    setAnalyzedItems((prev) =>
+      prev.map((item, i) =>
+        i === index
+          ? { ...item, additionalImageUrls: item.additionalImageUrls.filter((entry) => entry !== url) }
+          : item
+      )
+    );
+  };
+
+  const clearAllRecovered = () => {
+    setAnalyzedItems([]);
+    localStorage.removeItem(STORAGE_KEY);
   };
 
   const pendingItems = analyzedItems.filter((it) => !it.saved);
   const savedCount = analyzedItems.filter((it) => it.saved).length;
 
+  // Derived analysis progress
+  const doneCount = analysisStatuses.filter((s) => s === 'done').length;
+  const errorCount = analysisStatuses.filter((s) => s === 'error').length;
+  const inProgressCount = analysisStatuses.filter((s) => s === 'analyzing').length;
+
   return (
     <div className="bg-white p-5 space-y-6">
+      {/* Recovered data banner */}
+      {!isAnalyzing && pendingItems.length > 0 && savedCount === 0 && selectedImages.length === 0 && analysisTotalCount === 0 && (
+        <div className="rounded border-2 border-amber-500 bg-amber-50 p-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-amber-700 mb-1">
+            Recovered {pendingItems.length} unsaved comic{pendingItems.length > 1 ? 's' : ''} from last session
+          </p>
+          <p className="text-xs text-amber-600 mb-2">
+            These were analyzed but not saved before the page closed.
+          </p>
+          <button
+            onClick={clearAllRecovered}
+            className="text-xs text-red-600 hover:text-red-800 font-semibold underline cursor-pointer"
+          >
+            Discard all recovered items
+          </button>
+        </div>
+      )}
+
       {/* Selection */}
       <div>
         <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">
@@ -294,7 +515,7 @@ export default function ComicAnalyzer({ onSave }: ComicAnalyzerProps) {
             type="button"
             onClick={openGoogleDrivePicker}
             disabled={isLoadingDrive || isAnalyzing}
-            className="w-full rounded border-2 border-black bg-blue-600 py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-700 active:shadow-none active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50 transition-all"
+            className="w-full rounded border-2 border-black bg-blue-600 py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-700 active:shadow-none active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50 transition-all cursor-pointer"
           >
             {isLoadingDrive ? 'Connecting to Drive...' : 'Choose from Google Drive'}
           </button>
@@ -302,7 +523,7 @@ export default function ComicAnalyzer({ onSave }: ComicAnalyzerProps) {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={isAnalyzing}
-            className="w-full rounded border-2 border-black bg-white py-2.5 text-sm font-bold uppercase tracking-wide text-gray-700 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-gray-50 active:shadow-none active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50 transition-all"
+            className="w-full rounded border-2 border-black bg-white py-2.5 text-sm font-bold uppercase tracking-wide text-gray-700 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-gray-50 active:shadow-none active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50 transition-all cursor-pointer"
           >
             Upload from Computer
           </button>
@@ -321,7 +542,7 @@ export default function ComicAnalyzer({ onSave }: ComicAnalyzerProps) {
         )}
       </div>
 
-      {/* Selected Thumbnails */}
+      {/* Selected Thumbnails with status overlays */}
       {selectedImages.length > 0 && (
         <div>
           <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">
@@ -336,25 +557,69 @@ export default function ComicAnalyzer({ onSave }: ComicAnalyzerProps) {
                   alt={`Selected ${i + 1}`}
                   className="h-24 w-16 rounded border-2 border-black object-cover shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
                 />
-                <button
-                  onClick={() => removeSelected(i)}
-                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 border-black bg-red-600 text-xs font-bold text-white hover:bg-red-700"
-                >
-                  x
-                </button>
+
+                {/* Status overlay during analysis */}
+                {isAnalyzing && analysisStatuses[i] && (
+                  <div className={`absolute inset-0 rounded flex items-center justify-center ${
+                    analysisStatuses[i] === 'analyzing' ? 'bg-blue-600/60' :
+                    analysisStatuses[i] === 'done' ? 'bg-green-600/60' :
+                    analysisStatuses[i] === 'error' ? 'bg-red-600/60' :
+                    'bg-black/30'
+                  }`}>
+                    {analysisStatuses[i] === 'analyzing' && (
+                      <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    )}
+                    {analysisStatuses[i] === 'done' && (
+                      <span className="text-white text-lg font-black">✓</span>
+                    )}
+                    {analysisStatuses[i] === 'error' && (
+                      <span className="text-white text-lg font-black">✕</span>
+                    )}
+                  </div>
+                )}
+
+                {/* Remove button (only before analysis starts) */}
+                {!isAnalyzing && (
+                  <button
+                    onClick={() => removeSelected(i)}
+                    className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 border-black bg-red-600 text-xs font-bold text-white hover:bg-red-700 cursor-pointer"
+                  >
+                    x
+                  </button>
+                )}
               </div>
             ))}
           </div>
 
-          <button
-            onClick={analyzeAll}
-            disabled={isAnalyzing}
-            className="w-full rounded border-2 border-black bg-slate-800 py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 active:shadow-none active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-60 transition-all"
-          >
-            {isAnalyzing
-              ? `Analyzing ${analyzingIndex} of ${selectedImages.length}...`
-              : `Analyze ${selectedImages.length} Comic${selectedImages.length > 1 ? 's' : ''}`}
-          </button>
+          {/* Analyze button / Progress bar */}
+          {!isAnalyzing ? (
+            <button
+              onClick={analyzeAll}
+              className="w-full rounded border-2 border-black bg-slate-800 py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 active:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+            >
+              Analyze {selectedImages.length} Comic{selectedImages.length > 1 ? 's' : ''}
+            </button>
+          ) : (
+            <div className="space-y-2">
+              {/* Progress bar */}
+              <div className="w-full rounded border-2 border-black overflow-hidden bg-gray-200 h-7 relative">
+                <div
+                  className="h-full bg-green-600 transition-all duration-300"
+                  style={{ width: `${((doneCount + errorCount) / analysisTotalCount) * 100}%` }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-xs font-black uppercase tracking-wide text-black drop-shadow-[0_0_2px_rgba(255,255,255,0.8)]">
+                    {doneCount + errorCount} / {analysisTotalCount} analyzed
+                    {inProgressCount > 0 && ` — ${inProgressCount} in progress`}
+                    {errorCount > 0 && ` — ${errorCount} failed`}
+                  </span>
+                </div>
+              </div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 text-center">
+                Processing {ANALYSIS_CONCURRENCY} at a time — results appear as they finish
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -374,15 +639,13 @@ export default function ComicAnalyzer({ onSave }: ComicAnalyzerProps) {
 
           {pendingItems.length > 1 && (
             <button
-              onClick={() => {
-                analyzedItems.forEach((item, index) => {
-                  if (!item.saved && !item.saving) saveItem(index);
-                });
-              }}
-              disabled={pendingItems.some((it) => it.saving) || pendingItems.some((it) => !it.name.trim() || !it.company.trim() || !it.description.trim())}
-              className="w-full rounded border-2 border-black bg-slate-800 py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 active:shadow-none active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50 transition-all"
+              onClick={saveAllThrottled}
+              disabled={isSavingAll || pendingItems.some((it) => it.saving) || pendingItems.every((it) => !it.name.trim() || !it.company.trim() || !it.description.trim())}
+              className="w-full rounded border-2 border-black bg-slate-800 py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 active:shadow-none active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50 transition-all cursor-pointer"
             >
-              Save All ({pendingItems.length} Comics)
+              {isSavingAll
+                ? `Saving... (${SAVE_CONCURRENCY} at a time)`
+                : `Save All (${pendingItems.length} Comics)`}
             </button>
           )}
 
@@ -392,21 +655,31 @@ export default function ComicAnalyzer({ onSave }: ComicAnalyzerProps) {
             </div>
           )}
 
-          {analyzedItems.map((item, index) =>
-            item.saved ? null : (
-              <div
-                key={index}
-                className="rounded border-2 border-black bg-stone-50 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
-              >
+          <div className="max-h-[62vh] overflow-y-auto pr-1 space-y-5">
+            {analyzedItems.map((item, index) =>
+              item.saved ? null : (
+                <div
+                  key={index}
+                  className="rounded border-2 border-black bg-stone-50 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
+                >
                 {/* Cover image */}
                 <div className="border-b-2 border-black p-3 flex gap-3 items-start">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={item.imagePreviewUrl}
-                    alt="Comic cover"
-                    className="h-32 w-22 shrink-0 rounded border-2 border-black object-cover shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                    style={{ width: '5.5rem' }}
-                  />
+                  {item.imagePreviewUrl ? (
+                    <img
+                      src={item.imagePreviewUrl}
+                      alt="Comic cover"
+                      className="h-32 w-22 shrink-0 rounded border-2 border-black object-cover shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                      style={{ width: '5.5rem' }}
+                    />
+                  ) : (
+                    <div
+                      className="h-32 shrink-0 rounded border-2 border-black bg-gray-200 flex items-center justify-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                      style={{ width: '5.5rem' }}
+                    >
+                      <span className="text-[9px] font-bold text-gray-400 uppercase text-center px-1">No Preview</span>
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">
                       Claude extracted
@@ -422,7 +695,7 @@ export default function ComicAnalyzer({ onSave }: ComicAnalyzerProps) {
                     </p>
                     <button
                       onClick={() => discardItem(index)}
-                      className="mt-2 text-xs text-red-600 hover:text-red-800 font-semibold underline"
+                      className="mt-2 text-xs text-red-600 hover:text-red-800 font-semibold underline cursor-pointer"
                     >
                       Discard
                     </button>
@@ -474,6 +747,20 @@ export default function ComicAnalyzer({ onSave }: ComicAnalyzerProps) {
                         className="w-full rounded border-2 border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-black focus:outline-none"
                       />
                     </div>
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wide text-gray-600 mb-1">
+                        Price (Optional)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.price}
+                        onChange={(e) => updateItem(index, 'price', e.target.value)}
+                        placeholder="Leave blank if unknown"
+                        className="w-full rounded border-2 border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-black focus:outline-none"
+                      />
+                    </div>
                     <div className="col-span-2">
                       <label className="block text-xs font-bold uppercase tracking-wide text-gray-600 mb-1">
                         Publisher
@@ -492,7 +779,7 @@ export default function ComicAnalyzer({ onSave }: ComicAnalyzerProps) {
                       <select
                         value={item.condition}
                         onChange={(e) => updateItem(index, 'condition', e.target.value)}
-                        className="w-full rounded border-2 border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-black focus:outline-none"
+                        className="w-full rounded border-2 border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-black focus:outline-none cursor-pointer"
                       >
                         {CONDITIONS.map((c) => (
                           <option key={c} value={c}>{c}</option>
@@ -522,19 +809,47 @@ export default function ComicAnalyzer({ onSave }: ComicAnalyzerProps) {
                         className="w-full rounded border-2 border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-black focus:outline-none"
                       />
                     </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs font-bold uppercase tracking-wide text-gray-600 mb-1">
+                        Additional Images
+                      </label>
+                      <GoogleDrivePicker
+                        allowMultiSelect
+                        onSelectImageUrls={(urls) => addAdditionalImagesToItem(index, urls)}
+                        onSelectImageUrl={(url) => addAdditionalImageToItem(index, url)}
+                      />
+
+                      {item.additionalImageUrls.length > 0 && (
+                        <div className="mt-2 space-y-1.5">
+                          {item.additionalImageUrls.map((url) => (
+                            <div key={url} className="flex items-center justify-between gap-2 rounded border border-gray-200 bg-white px-2 py-1">
+                              <span className="truncate text-xs text-gray-700">{url}</span>
+                              <button
+                                type="button"
+                                onClick={() => removeAdditionalImageFromItem(index, url)}
+                                className="shrink-0 rounded bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700 hover:bg-red-200"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <button
                     onClick={() => saveItem(index)}
                     disabled={item.saving || !item.name.trim() || !item.company.trim() || !item.description.trim()}
-                    className="w-full rounded border-2 border-black bg-green-700 py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-green-800 active:shadow-none active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50 transition-all"
+                    className="w-full rounded border-2 border-black bg-green-700 py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-green-800 active:shadow-none active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-50 transition-all cursor-pointer"
                   >
                     {item.saving ? 'Saving...' : 'Save Comic'}
                   </button>
                 </div>
-              </div>
-            )
-          )}
+                </div>
+              )
+            )}
+          </div>
         </div>
       )}
     </div>
